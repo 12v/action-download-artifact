@@ -6,7 +6,6 @@ const filesize = require('filesize')
 const pathname = require('path')
 const fs = require('fs')
 const yauzl = require('yauzl')
-const path = require('path')
 
 async function downloadAction(name, path) {
     const artifactClient = artifact.create()
@@ -265,14 +264,14 @@ async function main() {
                 zipfile.readEntry();
                 zipfile.on("entry", (entry) => {
                     const action = entry.fileName.endsWith('/') ? "creating" : "inflating";
-                    const filepath = path.join(dir, entry.fileName);
+                    const filepath = pathname.join(dir, entry.fileName);
                     core.info(`  ${action}: ${filepath}`);
                     if (entry.fileName.endsWith('/')) {
                         zipfile.readEntry();
                     } else {
                         zipfile.openReadStream(entry, (err, readStream) => {
                             if (err) throw err;
-                            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+                            fs.mkdirSync(pathname.dirname(filepath), { recursive: true });
                             readStream.pipe(fs.createWriteStream(filepath));
                             readStream.on("end", () => {
                                 zipfile.readEntry();
