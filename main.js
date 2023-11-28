@@ -5,6 +5,8 @@ const AdmZip = require('adm-zip')
 const filesize = require('filesize')
 const pathname = require('path')
 const fs = require('fs')
+const yauzl = require('yauzl')
+const path = require('path')
 
 async function downloadAction(name, path) {
     const artifactClient = artifact.create()
@@ -222,7 +224,7 @@ async function main() {
         }
 
         core.setOutput("found_artifact", true)
-        
+
         for (const artifact of artifacts) {
             core.info(`==> Artifact: ${artifact.id}`)
 
@@ -256,17 +258,30 @@ async function main() {
 
             fs.mkdirSync(dir, { recursive: true })
 
-            const adm = new AdmZip(Buffer.from(zip.data))
-
             core.startGroup(`==> Extracting: ${artifact.name}.zip`)
-            adm.getEntries().forEach((entry) => {
-                const action = entry.isDirectory ? "creating" : "inflating"
-                const filepath = pathname.join(dir, entry.entryName)
 
-                core.info(`  ${action}: ${filepath}`)
-            })
+            yauzl.fromBuffer(Buffer.from(zip.data), { lazyEntries: true }, (err, zipfile) => {
+                if (err) throw err;
+                zipfile.readEntry();
+                zipfile.on("entry", (entry) => {
+                    const action = entry.fileName.endsWith('/') ? "creating" : "inflating";
+                    const filepath = path.join(dir, entry.fileName);
+                    core.info(`  ${action}: ${filepath}`);
+                    if (entry.fileName.endsWith('/')) {
+                        zipfile.readEntry();
+                    } else {
+                        zipfile.openReadStream(entry, (err, readStream) => {
+                            if (err) throw err;
+                            fs.mkdirSync(path.dirname(filepath), { recursive: true });
+                            readStream.pipe(fs.createWriteStream(filepath));
+                            readStream.on("end", () => {
+                                zipfile.readEntry();
+                            });
+                        });
+                    }
+                });
+            });
 
-            adm.extractAllTo(dir, true)
             core.endGroup()
         }
     } catch (error) {
@@ -277,7 +292,7 @@ async function main() {
 
     function setExitMessage(ifNoArtifactFound, message) {
         core.setOutput("found_artifact", false)
-        
+
         switch (ifNoArtifactFound) {
             case "fail":
                 core.setFailed(message)
